@@ -8,6 +8,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   const [showForm, setShowForm] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const [nome, setNome] = useState("");
   const [cognome, setCognome] = useState("");
@@ -15,39 +16,54 @@ export default function Dashboard() {
 
   const [palestraId, setPalestraId] = useState(null);
 
-  // =========================
-  // INIT
-  // =========================
   useEffect(() => {
     init();
   }, []);
 
   const init = async () => {
+    setLoading(true);
+
     const { data: userData, error } = await supabase.auth.getUser();
 
     if (error || !userData?.user) {
-      console.error("Auth error");
+      setLoading(false);
       return;
     }
-
-    const user = userData.user;
 
     const { data: palestra } = await supabase
       .from("palestra")
       .select("id_palestra")
-      .eq("user_id", user.id)
+      .eq("user_id", userData.user.id)
       .single();
 
-    if (!palestra) return;
+    if (!palestra) {
+      setLoading(false);
+      return;
+    }
 
     setPalestraId(palestra.id_palestra);
-
     await fetchClienti(palestra.id_palestra);
   };
 
-  // =========================
-  // FETCH CLIENTI
-  // =========================
+  const checkPdfExists = async (path) => {
+    if (!path) return false;
+
+    const parts = path.split("/");
+    const folder = parts[0];
+    const file = parts.slice(1).join("/");
+
+    const { data, error } = await supabase.storage
+      .from("schede")
+      .list(folder, {
+        search: file,
+        limit: 1,
+      });
+
+    if (error) return false;
+
+    return (data || []).length > 0;
+  };
+
   const fetchClienti = async (idPalestra) => {
     setLoading(true);
 
@@ -62,13 +78,28 @@ export default function Dashboard() {
       `)
       .eq("id_palestra", idPalestra);
 
-    setClienti(data || []);
+    const enriched = await Promise.all(
+      (data || []).map(async (c) => {
+        const exists = await checkPdfExists(c.scheda_path_cliente);
+
+        if (!exists && c.scheda_path_cliente) {
+          await supabase
+            .from("cliente")
+            .update({ scheda_path_cliente: null })
+            .eq("id_cliente", c.id_cliente);
+        }
+
+        return {
+          ...c,
+          pdf_exists: exists,
+        };
+      })
+    );
+
+    setClienti(enriched);
     setLoading(false);
   };
 
-  // =========================
-  // CREATE CLIENTE
-  // =========================
   const createCliente = async () => {
     if (!palestraId) return;
 
@@ -83,12 +114,10 @@ export default function Dashboard() {
       .select()
       .single();
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    if (error) return alert(error.message);
 
     const codeAsset = `NFC-${crypto.randomUUID().slice(0, 8)}`;
+    const nfcUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/c/${codeAsset}`;
 
     await supabase.from("asset").insert({
       id_cliente: cliente.id_cliente,
@@ -101,80 +130,65 @@ export default function Dashboard() {
     setCf("");
     setShowForm(false);
 
-    // update locale invece di refetch totale
     await fetchClienti(palestraId);
   };
 
-  // =========================
-  // GET ASSET ATTIVO
-  // =========================
-  const getActiveAsset = (assets) =>
-    assets?.find((a) => a.asset_attivo);
-
-  // =========================
-  // UPLOAD / OVERWRITE PDF
-  // =========================
   const uploadScheda = async (file, cliente) => {
     if (!file || !palestraId) return;
 
-    const fileExt = file.name.split(".").pop();
-
-    // 📌 path stabile per overwrite
     const filePath = `${palestraId}/${cliente.id_cliente}.pdf`;
 
-    // =========================
-    // 1. UPLOAD (overwrite ON)
-    // =========================
-    const { error: uploadError } = await supabase.storage
+    const wasExisting = cliente.pdf_exists;
+
+    const { error } = await supabase.storage
       .from("schede")
       .upload(filePath, file, {
-        upsert: true, // 🔥 fondamentale
+        upsert: true,
         contentType: "application/pdf",
       });
 
-    if (uploadError) {
-      alert(uploadError.message);
-      return;
-    }
+    if (error) return alert(error.message);
 
-    // =========================
-    // 2. UPDATE DB
-    // =========================
-    const { error: dbError } = await supabase
+    await supabase
       .from("cliente")
-      .update({
-        scheda_path_cliente: filePath,
-      })
+      .update({ scheda_path_cliente: filePath })
       .eq("id_cliente", cliente.id_cliente);
 
-    if (dbError) {
-      alert(dbError.message);
-      return;
-    }
+    setToast(wasExisting ? "PDF sostituito" : "PDF caricato");
 
-    // =========================
-    // 3. UPDATE STATE LOCALE (NO refetch necessario)
-    // =========================
-    setClienti((prev) =>
-      prev.map((c) =>
-        c.id_cliente === cliente.id_cliente
-          ? { ...c, scheda_path_cliente: filePath }
-          : c
-      )
-    );
+    setTimeout(() => setToast(null), 2000);
+
+    await fetchClienti(palestraId);
   };
 
-  // =========================
-  // UI
-  // =========================
+  const getActiveAsset = (assets) =>
+    assets?.find((a) => a.asset_attivo);
+
+  const pdfLabel = (c) =>
+    c.pdf_exists ? "Sostituisci PDF" : "Carica PDF";
+
+  const pdfStatus = (c) =>
+    c.pdf_exists ? (
+      <p className="text-green-600 text-xs mt-1">PDF presente</p>
+    ) : (
+      <p className="text-gray-400 text-xs mt-1">PDF non presente</p>
+    );
+
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">
+
+      <h1 className="text-2xl font-bold mb-4">
         Dashboard Clienti
       </h1>
 
+      {toast && (
+        <div className="mb-4 p-2 bg-black text-white rounded">
+          {toast}
+        </div>
+      )}
+
       <button
-        onClick={() => setShowForm((v) => !v)}
+        onClick={() => setShowForm(v => !v)}
         className="mb-4 bg-black text-white px-4 py-2 rounded"
       >
         + Nuovo cliente
@@ -238,33 +252,35 @@ export default function Dashboard() {
                   <td className="p-3">{c.cognome_cliente}</td>
                   <td className="p-3">{c.cod_fiscale_cliente}</td>
                   <td className="p-3">
-                    {asset?.code_asset || "N/A"}
-                  </td>
+                    {asset?.code_asset ? (
+                      <div className="flex flex-col">
+                        <span className="text-xs text-gray-500">
+                          {asset.code_asset}
+                        </span>
 
+                        <span className="text-blue-600 text-sm break-all">
+                          {`${process.env.NEXT_PUBLIC_BASE_URL}/c/${asset.code_asset}`}
+                        </span>
+                     </div>
+                   ) : (
+                     "N/A"
+                   )}
+                 </td>
                   <td className="p-3">
                     <label className="text-blue-600 underline cursor-pointer">
-                      {c.scheda_path_cliente
-                        ? "Sostituisci PDF"
-                        : "Carica PDF"}
+                      {pdfLabel(c)}
 
                       <input
                         type="file"
                         accept="application/pdf"
                         className="hidden"
                         onChange={(e) =>
-                          uploadScheda(
-                            e.target.files?.[0],
-                            c
-                          )
+                          uploadScheda(e.target.files?.[0], c)
                         }
                       />
                     </label>
 
-                    {c.scheda_path_cliente && (
-                      <p className="text-green-600 text-xs mt-1">
-                        PDF presente
-                      </p>
-                    )}
+                    {pdfStatus(c)}
                   </td>
                 </tr>
               );
