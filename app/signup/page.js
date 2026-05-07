@@ -8,10 +8,18 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nome, setNome] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   const handleSignup = async () => {
+
+    // VALIDAZIONE
+    if (!nome.trim() || !email.trim() || !password.trim()) {
+      setErrorMsg("Compila tutti i campi");
+      return;
+    }
+
     setLoading(true);
     setErrorMsg("");
 
@@ -28,11 +36,19 @@ export default function Signup() {
 
     const user = data.user;
 
-    const { error: dbError } = await supabase.from("palestra").insert({
-      nome_palestra: nome,
-      user_id: user.id,
-      palestra_attiva: true,
-    });
+    if (!user) {
+      setErrorMsg("Errore durante la registrazione");
+      setLoading(false);
+      return;
+    }
+
+    const { error: dbError } = await supabase
+      .from("palestra")
+      .insert({
+        nome_palestra: nome,
+        user_id: user.id,
+        palestra_attiva: true,
+      });
 
     if (dbError) {
       setErrorMsg(dbError.message);
@@ -41,6 +57,11 @@ export default function Signup() {
     }
 
     alert("Registrazione completata!");
+
+    setNome("");
+    setEmail("");
+    setPassword("");
+
     setLoading(false);
   };
 
@@ -57,7 +78,7 @@ export default function Signup() {
         </p>
 
         {errorMsg && (
-          <div className="bg-red-100 text-red-700 p-2 rounded mb-4 text-sm">
+          <div className="bg-red-100 text-red-700 p-3 rounded mb-4 text-sm">
             {errorMsg}
           </div>
         )}
@@ -65,12 +86,15 @@ export default function Signup() {
         <input
           className="w-full mb-4 p-3 border rounded-lg"
           placeholder="Nome palestra"
+          value={nome}
           onChange={(e) => setNome(e.target.value)}
         />
 
         <input
+          type="email"
           className="w-full mb-4 p-3 border rounded-lg"
           placeholder="Email"
+          value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
 
@@ -78,13 +102,26 @@ export default function Signup() {
           type="password"
           className="w-full mb-6 p-3 border rounded-lg"
           placeholder="Password"
+          value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
 
         <button
           onClick={handleSignup}
-          disabled={loading}
-          className="w-full bg-black text-white p-3 rounded-lg hover:bg-gray-800 transition"
+          disabled={
+            loading ||
+            !nome.trim() ||
+            !email.trim() ||
+            !password.trim()
+          }
+          className={`w-full p-3 rounded-lg transition ${
+            loading ||
+            !nome.trim() ||
+            !email.trim() ||
+            !password.trim()
+              ? "bg-gray-400 text-white cursor-not-allowed"
+              : "bg-black text-white hover:bg-gray-800"
+          }`}
         >
           {loading ? "Creazione..." : "Registrati"}
         </button>
