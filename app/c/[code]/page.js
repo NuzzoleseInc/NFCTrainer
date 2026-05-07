@@ -25,9 +25,9 @@ export default function NFCPage() {
         cliente (*)
       `)
       .eq("code_asset", code)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) {
+    if (error || !data || !data.cliente) {
       setCliente(null);
       setLoading(false);
       return;
@@ -37,12 +37,18 @@ export default function NFCPage() {
     setLoading(false);
   };
 
+  // 🔥 FIX CACHE PDF (fondamentale in produzione)
   const getPdfUrl = (path) => {
     if (!path) return null;
 
-    return supabase.storage
+    const { data } = supabase.storage
       .from("schede")
-      .getPublicUrl(path).data.publicUrl;
+      .getPublicUrl(path);
+
+    if (!data?.publicUrl) return null;
+
+    // cache bust per evitare PDF vecchi su Vercel/CDN
+    return `${data.publicUrl}?t=${Date.now()}`;
   };
 
   if (loading) {
@@ -79,6 +85,7 @@ export default function NFCPage() {
         <a
           href={pdfUrl}
           target="_blank"
+          rel="noopener noreferrer"
           className="block mt-6 bg-black text-white text-center p-4 rounded"
         >
           Apri scheda PDF
