@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
+  const router = useRouter();
+
   const [clienti, setClienti] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -16,6 +19,10 @@ export default function Dashboard() {
 
   const [palestraId, setPalestraId] = useState(null);
 
+  const [authChecked, setAuthChecked] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
+
+  // 🔐 INIT AUTH + DATA
   useEffect(() => {
     init();
   }, []);
@@ -26,7 +33,8 @@ export default function Dashboard() {
     const { data: userData, error } = await supabase.auth.getUser();
 
     if (error || !userData?.user) {
-      setLoading(false);
+      setRedirecting(true);
+      router.replace("/");
       return;
     }
 
@@ -37,14 +45,59 @@ export default function Dashboard() {
       .single();
 
     if (!palestra) {
-      setLoading(false);
+      setRedirecting(true);
+      router.replace("/");
       return;
     }
 
     setPalestraId(palestra.id_palestra);
+    setAuthChecked(true);
+
     await fetchClienti(palestra.id_palestra);
   };
 
+  // 🔁 BACK BUTTON = LOGOUT FORZATO
+  useEffect(() => {
+    const handleBackLogout = async () => {
+      await supabase.auth.signOut();
+      router.replace("/");
+    };
+
+    const onPopState = () => {
+      handleBackLogout();
+    };
+
+    window.addEventListener("popstate", onPopState);
+
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+    };
+  }, []);
+
+  // 🔁 SAFETY GUARD (focus tab)
+  useEffect(() => {
+    const onFocus = async () => {
+      const { data } = await supabase.auth.getUser();
+
+      if (!data?.user) {
+        router.replace("/");
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
+  // 🚪 LOGOUT BUTTON
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.replace("/");
+  };
+
+  // 📄 CHECK PDF EXISTS
   const checkPdfExists = async (path) => {
     if (!path) return false;
 
@@ -64,6 +117,7 @@ export default function Dashboard() {
     return (data || []).length > 0;
   };
 
+  // 📊 FETCH CLIENTI
   const fetchClienti = async (idPalestra) => {
     setLoading(true);
 
@@ -100,6 +154,7 @@ export default function Dashboard() {
     setLoading(false);
   };
 
+  // ➕ CREATE CLIENTE
   const createCliente = async () => {
     if (!palestraId) return;
 
@@ -117,7 +172,6 @@ export default function Dashboard() {
     if (error) return alert(error.message);
 
     const codeAsset = `NFC-${crypto.randomUUID().slice(0, 8)}`;
-    const nfcUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/c/${codeAsset}`;
 
     await supabase.from("asset").insert({
       id_cliente: cliente.id_cliente,
@@ -133,6 +187,7 @@ export default function Dashboard() {
     await fetchClienti(palestraId);
   };
 
+  // 📤 UPLOAD PDF
   const uploadScheda = async (file, cliente) => {
     if (!file || !palestraId) return;
 
@@ -174,19 +229,40 @@ export default function Dashboard() {
       <p className="text-gray-400 text-xs mt-1">PDF non presente</p>
     );
 
+  // 🔐 LOADING / AUTH BLOCK
+  if (!authChecked || redirecting) {
+    return (
+      <div className="p-6 text-center">
+        <p>Caricamento...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
 
-      <h1 className="text-2xl font-bold mb-4">
-        Dashboard Clienti
-      </h1>
+      {/* HEADER */}
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold">
+          Dashboard Clienti
+        </h1>
 
+        <button
+          onClick={handleLogout}
+          className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
+        >
+          Esci
+        </button>
+      </div>
+
+      {/* TOAST */}
       {toast && (
         <div className="mb-4 p-2 bg-black text-white rounded">
           {toast}
         </div>
       )}
 
+      {/* NUOVO CLIENTE */}
       <button
         onClick={() => setShowForm(v => !v)}
         className="mb-4 bg-black text-white px-4 py-2 rounded"
@@ -251,6 +327,7 @@ export default function Dashboard() {
                   <td className="p-3">{c.nome_cliente}</td>
                   <td className="p-3">{c.cognome_cliente}</td>
                   <td className="p-3">{c.cod_fiscale_cliente}</td>
+
                   <td className="p-3">
                     {asset?.code_asset ? (
                       <div className="flex flex-col">
@@ -261,11 +338,12 @@ export default function Dashboard() {
                         <span className="text-blue-600 text-sm break-all">
                           {`${process.env.NEXT_PUBLIC_BASE_URL}/c/${asset.code_asset}`}
                         </span>
-                     </div>
-                   ) : (
-                     "N/A"
-                   )}
-                 </td>
+                      </div>
+                    ) : (
+                      "N/A"
+                    )}
+                  </td>
+
                   <td className="p-3">
                     <label className="text-blue-600 underline cursor-pointer">
                       {pdfLabel(c)}
