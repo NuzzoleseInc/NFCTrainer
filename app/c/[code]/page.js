@@ -13,10 +13,6 @@ export default function NFCPage() {
   const [cliente, setCliente] = useState(null);
   const [loading, setLoading] = useState(true);
   const [workout, setWorkout] = useState(null);
-  const [fileUrl, setFileUrl] = useState(null);
-
-  const [rawText, setRawText] = useState(null);
-  const [showRaw, setShowRaw] = useState(false);
 
   useEffect(() => {
     if (!code) return;
@@ -35,7 +31,7 @@ export default function NFCPage() {
       .eq("code_asset", code)
       .maybeSingle();
 
-    if (error || !data || !data.cliente) {
+    if (error || !data?.cliente) {
       setCliente(null);
       setLoading(false);
       return;
@@ -45,7 +41,10 @@ export default function NFCPage() {
     setCliente(c);
 
     const url = getFileUrl(c.scheda_path_cliente);
-    setFileUrl(url);
+
+    if (url) {
+      await loadWorkout(url);
+    }
 
     setLoading(false);
   };
@@ -62,31 +61,29 @@ export default function NFCPage() {
     return `${data.publicUrl}?t=${Date.now()}`;
   };
 
-  // 📥 LEGGE TXT SOLO QUANDO CLICCHI
-  const openScheda = async () => {
-    if (!fileUrl) return;
-
+  const loadWorkout = async (url) => {
     try {
-      const res = await fetch(fileUrl);
+      const res = await fetch(url);
       const text = await res.text();
 
-      setRawText(text);
+      if (!text?.trim()) {
+        setWorkout(null);
+        return;
+      }
 
       const parsed = parseWorkout(text);
       setWorkout(parsed);
-      setShowRaw(true);
 
     } catch (e) {
       console.error(e);
+      setWorkout(null);
     }
   };
 
   if (loading) {
     return (
       <div className="p-6 text-center">
-        <p className="text-lg font-semibold">
-          Caricamento scheda...
-        </p>
+        <p>Caricamento scheda...</p>
       </div>
     );
   }
@@ -106,35 +103,14 @@ export default function NFCPage() {
         {cliente.nome_cliente} {cliente.cognome_cliente}
       </h1>
 
-      {!fileUrl && (
-        <p className="text-gray-500 text-center">
+      {workout ? (
+        <WorkoutView data={workout} />
+      ) : (
+        <p className="text-center text-gray-500">
           Nessuna scheda disponibile
         </p>
       )}
 
-      {/* 🔘 BOTTONE PRINCIPALE */}
-      {fileUrl && (
-        <button
-          onClick={openScheda}
-          className="block mt-6 bg-black text-white text-center p-4 rounded w-full"
-        >
-          Apri scheda
-        </button>
-      )}
-
-      {/* 🧠 WORKOUT UI */}
-      {workout && (
-        <div className="mt-4">
-          <WorkoutView data={workout} />
-        </div>
-      )}
-
-      {/* 📄 RAW FALLBACK */}
-      {showRaw && rawText && !workout && (
-        <pre className="mt-4 p-4 bg-gray-100 text-sm whitespace-pre-wrap">
-          {rawText}
-        </pre>
-      )}
     </div>
   );
 }
