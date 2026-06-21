@@ -14,15 +14,15 @@ export default function ClienteRow({ cliente, onUpload }) {
       <td className="p-3">
         <input
           type="file"
-          accept="application/pdf"
+          accept=".txt,text/plain"
           onChange={(e) =>
-            onUpload(e.target.files[0], cliente.id_cliente)
+            onUpload(e.target.files?.[0], cliente.id_cliente)
           }
         />
 
         {cliente.scheda_path_cliente && (
           <p className="text-xs text-green-600 mt-1">
-            PDF caricato
+            Scheda caricata
           </p>
         )}
       </td>

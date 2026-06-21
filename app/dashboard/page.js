@@ -22,7 +22,6 @@ export default function Dashboard() {
   const [authChecked, setAuthChecked] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
 
-  // 🔐 INIT AUTH + DATA
   useEffect(() => {
     init();
   }, []);
@@ -56,49 +55,35 @@ export default function Dashboard() {
     await fetchClienti(palestra.id_palestra);
   };
 
-  // 🔁 BACK BUTTON = LOGOUT FORZATO
   useEffect(() => {
     const handleBackLogout = async () => {
       await supabase.auth.signOut();
       router.replace("/");
     };
 
-    const onPopState = () => {
-      handleBackLogout();
-    };
+    const onPopState = () => handleBackLogout();
 
     window.addEventListener("popstate", onPopState);
-
-    return () => {
-      window.removeEventListener("popstate", onPopState);
-    };
+    return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  // 🔁 SAFETY GUARD (focus tab)
   useEffect(() => {
     const onFocus = async () => {
       const { data } = await supabase.auth.getUser();
-
-      if (!data?.user) {
-        router.replace("/");
-      }
+      if (!data?.user) router.replace("/");
     };
 
     window.addEventListener("focus", onFocus);
-
-    return () => {
-      window.removeEventListener("focus", onFocus);
-    };
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
-  // 🚪 LOGOUT BUTTON
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.replace("/");
   };
 
-  // 📄 CHECK PDF EXISTS
-  const checkPdfExists = async (path) => {
+  // 📄 CHECK FILE EXISTS (TXT OR ANY)
+  const checkFileExists = async (path) => {
     if (!path) return false;
 
     const parts = path.split("/");
@@ -117,7 +102,6 @@ export default function Dashboard() {
     return (data || []).length > 0;
   };
 
-  // 📊 FETCH CLIENTI
   const fetchClienti = async (idPalestra) => {
     setLoading(true);
 
@@ -134,7 +118,7 @@ export default function Dashboard() {
 
     const enriched = await Promise.all(
       (data || []).map(async (c) => {
-        const exists = await checkPdfExists(c.scheda_path_cliente);
+        const exists = await checkFileExists(c.scheda_path_cliente);
 
         if (!exists && c.scheda_path_cliente) {
           await supabase
@@ -145,7 +129,7 @@ export default function Dashboard() {
 
         return {
           ...c,
-          pdf_exists: exists,
+          file_exists: exists,
         };
       })
     );
@@ -154,7 +138,6 @@ export default function Dashboard() {
     setLoading(false);
   };
 
-  // ➕ CREATE CLIENTE
   const createCliente = async () => {
     if (!palestraId) return;
 
@@ -187,19 +170,19 @@ export default function Dashboard() {
     await fetchClienti(palestraId);
   };
 
-  // 📤 UPLOAD PDF
+  // 📤 UPLOAD TXT (NON PIÙ PDF)
   const uploadScheda = async (file, cliente) => {
     if (!file || !palestraId) return;
 
-    const filePath = `${palestraId}/${cliente.id_cliente}.pdf`;
+    const filePath = `${palestraId}/${cliente.id_cliente}.txt`;
 
-    const wasExisting = cliente.pdf_exists;
+    const wasExisting = cliente.file_exists;
 
     const { error } = await supabase.storage
       .from("schede")
       .upload(filePath, file, {
         upsert: true,
-        contentType: "application/pdf",
+        contentType: "text/plain",
       });
 
     if (error) return alert(error.message);
@@ -209,7 +192,7 @@ export default function Dashboard() {
       .update({ scheda_path_cliente: filePath })
       .eq("id_cliente", cliente.id_cliente);
 
-    setToast(wasExisting ? "PDF sostituito" : "PDF caricato");
+    setToast(wasExisting ? "Scheda sostituita" : "Scheda caricata");
 
     setTimeout(() => setToast(null), 2000);
 
@@ -219,17 +202,16 @@ export default function Dashboard() {
   const getActiveAsset = (assets) =>
     assets?.find((a) => a.asset_attivo);
 
-  const pdfLabel = (c) =>
-    c.pdf_exists ? "Sostituisci PDF" : "Carica PDF";
+  const fileLabel = (c) =>
+    c.file_exists ? "Sostituisci scheda" : "Carica scheda";
 
-  const pdfStatus = (c) =>
-    c.pdf_exists ? (
-      <p className="text-green-600 text-xs mt-1">PDF presente</p>
+  const fileStatus = (c) =>
+    c.file_exists ? (
+      <p className="text-green-600 text-xs mt-1">Scheda presente</p>
     ) : (
-      <p className="text-gray-400 text-xs mt-1">PDF non presente</p>
+      <p className="text-gray-400 text-xs mt-1">Scheda non presente</p>
     );
 
-  // 🔐 LOADING / AUTH BLOCK
   if (!authChecked || redirecting) {
     return (
       <div className="p-6 text-center">
@@ -241,7 +223,6 @@ export default function Dashboard() {
   return (
     <div className="p-6">
 
-      {/* HEADER */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">
           Dashboard Clienti
@@ -255,14 +236,12 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* TOAST */}
       {toast && (
         <div className="mb-4 p-2 bg-black text-white rounded">
           {toast}
         </div>
       )}
 
-      {/* NUOVO CLIENTE */}
       <button
         onClick={() => setShowForm(v => !v)}
         className="mb-4 bg-black text-white px-4 py-2 rounded"
@@ -270,7 +249,6 @@ export default function Dashboard() {
         + Nuovo cliente
       </button>
 
-      {/* FORM */}
       {showForm && (
         <div className="bg-gray-100 p-4 rounded mb-6">
           <input
@@ -303,7 +281,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* TABLE */}
       {loading ? (
         <p>Caricamento...</p>
       ) : (
@@ -314,7 +291,7 @@ export default function Dashboard() {
               <th className="p-3 text-left">Cognome</th>
               <th className="p-3 text-left">CF</th>
               <th className="p-3 text-left">NFC</th>
-              <th className="p-3 text-left">Scheda PDF</th>
+              <th className="p-3 text-left">Scheda</th>
             </tr>
           </thead>
 
@@ -346,11 +323,11 @@ export default function Dashboard() {
 
                   <td className="p-3">
                     <label className="text-blue-600 underline cursor-pointer">
-                      {pdfLabel(c)}
+                      {fileLabel(c)}
 
                       <input
                         type="file"
-                        accept="application/pdf"
+                        accept=".txt,text/plain"
                         className="hidden"
                         onChange={(e) =>
                           uploadScheda(e.target.files?.[0], c)
@@ -358,7 +335,7 @@ export default function Dashboard() {
                       />
                     </label>
 
-                    {pdfStatus(c)}
+                    {fileStatus(c)}
                   </td>
                 </tr>
               );

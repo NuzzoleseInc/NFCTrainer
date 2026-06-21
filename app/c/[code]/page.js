@@ -1,14 +1,19 @@
 "use client";
-//
+
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useParams } from "next/navigation";
+
+import WorkoutView from "@/components/workoutView";
+import { parseWorkout } from "@/components/workoutParser";
 
 export default function NFCPage() {
   const { code } = useParams();
 
   const [cliente, setCliente] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [workout, setWorkout] = useState(null);
+  const [fileUrl, setFileUrl] = useState(null);
 
   useEffect(() => {
     if (!code) return;
@@ -33,12 +38,21 @@ export default function NFCPage() {
       return;
     }
 
-    setCliente(data.cliente);
+    const c = data.cliente;
+    setCliente(c);
+
+    const url = getFileUrl(c.scheda_path_cliente);
+    setFileUrl(url);
+
+    if (url) {
+      await handleWorkout(url);
+    }
+
     setLoading(false);
   };
 
-  // 🔥 FIX CACHE PDF (fondamentale in produzione)
-  const getPdfUrl = (path) => {
+  // 🔥 STESSO BUCKET, SOLO URL
+  const getFileUrl = (path) => {
     if (!path) return null;
 
     const { data } = supabase.storage
@@ -47,8 +61,27 @@ export default function NFCPage() {
 
     if (!data?.publicUrl) return null;
 
-    // cache bust per evitare PDF vecchi su Vercel/CDN
     return `${data.publicUrl}?t=${Date.now()}`;
+  };
+
+  // 📥 QUI È L’UNICA DIFFERENZA VERA
+  const handleWorkout = async (url) => {
+    try {
+      const res = await fetch(url);
+      const text = await res.text(); // 👈 ORA È TXT
+
+      if (!text || text.trim().length === 0) {
+        setWorkout(null);
+        return;
+      }
+
+      const parsed = parseWorkout(text);
+      setWorkout(parsed);
+
+    } catch (e) {
+      console.error(e);
+      setWorkout(null);
+    }
   };
 
   if (loading) {
@@ -69,27 +102,21 @@ export default function NFCPage() {
     );
   }
 
-  const pdfUrl = getPdfUrl(cliente.scheda_path_cliente);
-
   return (
     <div className="p-6 max-w-md mx-auto">
+
       <h1 className="text-xl font-bold text-center mb-4">
         {cliente.nome_cliente} {cliente.cognome_cliente}
       </h1>
 
-      {!pdfUrl ? (
+      {!fileUrl && (
         <p className="text-gray-500 text-center">
           Nessuna scheda disponibile
         </p>
-      ) : (
-        <a
-          href={pdfUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block mt-6 bg-black text-white text-center p-4 rounded"
-        >
-          Apri scheda PDF
-        </a>
+      )}
+
+      {workout && (
+        <WorkoutView data={workout} />
       )}
     </div>
   );
