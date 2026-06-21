@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useParams } from "next/navigation";
 
+import WorkoutView from "@/components/workoutViewer";
+import { parseWorkout } from "@/components/workoutParser";
+
 export default function NFCPage() {
   const { code } = useParams();
 
@@ -11,6 +14,9 @@ export default function NFCPage() {
   const [loading, setLoading] = useState(true);
   const [workout, setWorkout] = useState(null);
   const [fileUrl, setFileUrl] = useState(null);
+
+  const [rawText, setRawText] = useState(null);
+  const [showRaw, setShowRaw] = useState(false);
 
   useEffect(() => {
     if (!code) return;
@@ -41,14 +47,9 @@ export default function NFCPage() {
     const url = getFileUrl(c.scheda_path_cliente);
     setFileUrl(url);
 
-    if (url) {
-      await handleWorkout(url);
-    }
-
     setLoading(false);
   };
 
-  // 🔥 STESSO BUCKET, SOLO URL
   const getFileUrl = (path) => {
     if (!path) return null;
 
@@ -61,23 +62,22 @@ export default function NFCPage() {
     return `${data.publicUrl}?t=${Date.now()}`;
   };
 
-  // 📥 QUI È L’UNICA DIFFERENZA VERA
-  const handleWorkout = async (url) => {
-    try {
-      const res = await fetch(url);
-      const text = await res.text(); // 👈 ORA È TXT
+  // 📥 LEGGE TXT SOLO QUANDO CLICCHI
+  const openScheda = async () => {
+    if (!fileUrl) return;
 
-      if (!text || text.trim().length === 0) {
-        setWorkout(null);
-        return;
-      }
+    try {
+      const res = await fetch(fileUrl);
+      const text = await res.text();
+
+      setRawText(text);
 
       const parsed = parseWorkout(text);
       setWorkout(parsed);
+      setShowRaw(true);
 
     } catch (e) {
       console.error(e);
-      setWorkout(null);
     }
   };
 
@@ -112,8 +112,28 @@ export default function NFCPage() {
         </p>
       )}
 
+      {/* 🔘 BOTTONE PRINCIPALE */}
+      {fileUrl && (
+        <button
+          onClick={openScheda}
+          className="block mt-6 bg-black text-white text-center p-4 rounded w-full"
+        >
+          Apri scheda
+        </button>
+      )}
+
+      {/* 🧠 WORKOUT UI */}
       {workout && (
-        <WorkoutView data={workout} />
+        <div className="mt-4">
+          <WorkoutView data={workout} />
+        </div>
+      )}
+
+      {/* 📄 RAW FALLBACK */}
+      {showRaw && rawText && !workout && (
+        <pre className="mt-4 p-4 bg-gray-100 text-sm whitespace-pre-wrap">
+          {rawText}
+        </pre>
       )}
     </div>
   );
