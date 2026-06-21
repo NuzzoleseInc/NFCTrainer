@@ -4,9 +4,6 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useParams } from "next/navigation";
 
-import WorkoutView from "@/components/workoutView";
-import { parseWorkout } from "@/components/workoutParser";
-
 export default function NFCPage() {
   const { code } = useParams();
 
